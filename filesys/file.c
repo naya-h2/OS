@@ -45,6 +45,7 @@ file_reopen (struct file *file)
 void
 file_close (struct file *file) 
 {
+  // printf("called me? %p\n", file);
   if (file != NULL)
     {
       file_allow_write (file);
@@ -133,6 +134,7 @@ void
 file_allow_write (struct file *file) 
 {
   ASSERT (file != NULL);
+  // printf("        allow write\n");
   if (file->deny_write) 
     {
       file->deny_write = false;

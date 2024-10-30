@@ -18,6 +18,27 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "filesys/inode.h"
+struct inode_disk
+  {
+    block_sector_t start;               /* First data sector. */
+    off_t length;                       /* File size in bytes. */
+    unsigned magic;                     /* Magic number. */
+    uint32_t unused[125];               /* Not used. */
+  };
+
+
+struct inode 
+  {
+    struct list_elem elem;              /* Element in inode list. */
+    block_sector_t sector;              /* Sector number of disk location. */
+    int open_cnt;                       /* Number of openers. */
+    bool removed;                       /* True if deleted, false otherwise. */
+    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+    struct inode_disk data;             /* Inode content. */
+  };
+  
+
 struct file 
   {
     struct inode *inode;        /* File's inode. */
@@ -83,6 +104,7 @@ start_process (void *file_name_)
   success = load (file_name, &if_.eip, &if_.esp);
   // printf("load done\n");
 
+  // printf("from start %p(%d)\n", thread_current()->ing_file, thread_current()->ing_file->inode->deny_write_cnt);
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
@@ -148,6 +170,10 @@ process_exit (void)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+
+    // printf("from process %p(%p)\n", cur->ing_file, cur->ing_file->inode->deny_write_cnt);
+    file_close(cur->ing_file); //얘가 범인임.
+
   pd = cur->pagedir;
   if (pd != NULL) 
     {
@@ -163,7 +189,6 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
-  if(cur->ing_file->deny_write) file_close(cur->ing_file); //얘가 범인임.
 
   for(int i=3;i<FD_TABLE_SIZE;i++){
     if(!cur->fdt[i]) continue;
@@ -308,14 +333,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   char* cmdPtr =  strtok_r(file_name_copy, " ", &savePtr); //공백 기준으로 자른 첫 번째 포인터(ex. echo)
 
   
-  passing_arr = (char**)realloc(passing_arr, (word_cnt) * sizeof(char)); //row 추가
-
-  // printf("filesys에 넣어보쟈: %s\n", cmdPtr);
+  // passing_arr = (char**)realloc(passing_arr, (word_cnt) * sizeof(char)); //row 추가 
+  
+  passing_arr = (char **)malloc(word_cnt * sizeof(char*)); //포인터 배열을 할당
 
   /* Open executable file. */
   file = filesys_open (cmdPtr);
-  t->ing_file = file; //현재 실행 파일 저장
-  file_deny_write(file); //실행 파일 읽기 모드로 변경
 
   
   if (file == NULL) 
@@ -323,6 +346,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", cmdPtr);
       goto done; 
     }
+  // printf("from a %p(%d)\n", file, file->inode->deny_write_cnt);
+  file_deny_write(file); //실행 파일 읽기 모드로 변경
+  // printf("from b %p(%d)\n", file, file->inode->deny_write_cnt);
   
 
 
@@ -402,29 +428,30 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (!setup_stack (esp))
     goto done;
 
-    //배열에 저장을 해보쟈.
-  while(cmdPtr != NULL){
-    // printf("너 돌아가고 있니\n");
-    passing_arr[arr_size] = (char*)malloc(((strlen(cmdPtr) + 1)*sizeof(char))); //문자열 크기만큼 할당
 
-    // printf("~~이걸 저장할게: %s\n", cmdPtr);
-    memcpy(passing_arr[arr_size], cmdPtr, (strlen(cmdPtr) + 1) * sizeof(char));
-    // passing_arr[arr_size][strlen(cmdPtr)] = '\0';
-    
-    // printf("이거 저장함!: %s\n", passing_arr[arr_size]);
-    cmdPtr = strtok_r(NULL, " ", &savePtr); //또 자르고
+  // printf("from c %p(%d)\n", file, file->inode->deny_write_cnt);
+  // printf("%p\n", &(file->inode->deny_write_cnt));    
+
+  while(cmdPtr != NULL){
+    passing_arr[arr_size] = cmdPtr;
+    // printf("   잠시만유... %s\n", passing_arr[arr_size]);
+    cmdPtr = strtok_r(NULL, " ", &savePtr);
     arr_size++;
   }
 
+// printf("while 나옴? ======= 여기까지 ㅇㅋ\n");
+// printf("%p\n", &(file->inode->deny_write_cnt));
+// printf("arr_size = %d\n", arr_size);
+  
   int total_stack_len = 0;
   char** stack_addr_arr; //여기에 스택 주소 저장할거임
   stack_addr_arr = (char**)malloc((arr_size) * sizeof(char *)); //할당 char이슈가 있었다 ..
-
-
+    
+  
   //단어를 거꾸로 일단 쌓고
   for(int i=arr_size-1;i>=0;i--){
     // printf("~~%s\n", passing_arr[i]);
-    // printf("~~%p\n", *esp);
+    // printf("~~!!%d\n", strlen(passing_arr[i]));
     int word_len = strlen(passing_arr[i]) + 1; // \0포함한 글자수
     *esp -= word_len;
     stack_addr_arr[i] = *esp; //주소 저장
@@ -433,46 +460,45 @@ load (const char *file_name, void (**eip) (void), void **esp)
     total_stack_len += word_len;
   }
 
+  // printf("거꾸로 다쌓았당!!!!!!!!!!\n\n");
+  
   //word alignment를 맞춰보자
   if(total_stack_len%4){
     int q = total_stack_len/4;
     int align = (q+1)*4 - total_stack_len;
     *esp -= align;
   }
+    
   
   //구분자 넣기
   *esp -= 4;
-  **((uint32_t**)esp)=0;
-
+  **((uint32_t**)esp)=0;    
+  
   //이제 주소를 거꾸로 쌓아보자
   for(int i=arr_size-1;i>=0;i--){
     *esp -= 4; //스택 늘리고
     **((uint32_t**)esp)=stack_addr_arr[i];
-  }
-
+  }    
+  
   //argv를 넣기
   *esp -= 4;
-  **((uint32_t**)esp)= *esp + 4;
-
+  **((uint32_t**)esp)= *esp + 4;    
+  
   //argc를 넣기
   *esp -=4;
-  **((uint32_t**)esp)= arr_size;
-
+  **((uint32_t**)esp)= arr_size;    
+  
   //return address
   *esp -=4;
-  **((uint32_t**)esp)= 0;
-
+  **((uint32_t**)esp)= 0;    
+  
   //이제 free
   free(file_name_copy);
   free(stack_addr_arr);
-  for(int i=0;i<arr_size;i++){
-    free(passing_arr[i]);
-  }
   free(passing_arr);
 
   // printf("hex dump in construct_stack start\n\n");
   // hex_dump(*esp, *esp, 100, true);
-
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -480,7 +506,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if(success)  {
+    t->ing_file = file; //현재 실행 파일 저장
+    // printf("from c %p(%d)\n", file, file->inode->deny_write_cnt);
+    // printf("from d %p(%d)\n", t->ing_file, t->ing_file->inode->deny_write_cnt);
+  }
+  else {
+    // printf("no.1\n");
+    file_close (file);
+  }
   return success;
 }
 

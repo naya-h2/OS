@@ -263,6 +263,7 @@ void close (int fd){
   if(fd < 3 || fd > FD_TABLE_SIZE - 1) return;
   for(int i=3;i<FD_TABLE_SIZE;i++){
     if(!cur_thread->fdt[i]) continue;
+    // printf("from syscall\n");
     file_close(cur_thread->fdt[i]);
     cur_thread->fdt[i] = NULL; //fdt 초기화
   }
