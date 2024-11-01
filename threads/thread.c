@@ -484,6 +484,11 @@ init_thread (struct thread *t, const char *name, int priority)
     t->fdt[i] = NULL;
   }
 
+  t->ing_file = NULL;
+  t->p_thread = running_thread();
+  sema_init(&(t->sema_load), 0);
+  t->isLoad = false;
+
   #endif
 }
 

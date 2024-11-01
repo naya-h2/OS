@@ -109,9 +109,9 @@ struct thread
    //  proj#2
    struct file* fdt[FD_TABLE_SIZE]; //fd table
    struct file* ing_file;
-   struct semaphore sema_pc; //child가 끝날때까지 parent 기다리기 위한 용도
-   
-   bool isLoad; //child가 load되었는지 여부
+   struct semaphore sema_load;
+   struct thread* p_thread; //얘를 만든 parent 
+   bool isLoad;
 
 #endif
 

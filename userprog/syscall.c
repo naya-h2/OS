@@ -131,10 +131,12 @@ void exit (int status) {
 
 pid_t exec (const char *file){
   // printf("exec로 들어옴\n");
-  return process_execute(file);
+  tid_t pid = process_execute(file);
+  return pid;
 }
 
 int wait (pid_t child_tid){
+  // printf("wait.. 들어오니?\n");
   return process_wait(child_tid);
 }
 
@@ -247,7 +249,7 @@ int open (const char *file){
   for(int i=3;i<FD_TABLE_SIZE;i++){
     if(cur->fdt[i]) continue;
     //넣기 전에 검사
-    // if(!strcmp(cur->))
+    // if(cur->ing_file)
     
     cur->fdt[i] = temp;
     fd = i;

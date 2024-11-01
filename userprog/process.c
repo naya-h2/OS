@@ -75,15 +75,34 @@ process_execute (const char *file_name)
   char* cmdPtr =  strtok_r(file_name_copy, " ", &savePtr); //공백 기준으로 자른 첫 번째 포인터(ex. echo)
 
   if(!filesys_open(cmdPtr)) {
+    free(file_name_copy);
+    palloc_free_page (fn_copy); 
     return -1; //파일 없는 경우 예외처리
   }
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmdPtr, PRI_DEFAULT, start_process, fn_copy);
+  sema_down(&thread_current()->sema_load); //부모한테 걸기 (자식 다 로드될때까지)
+  free(file_name_copy);
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
 
-  free(file_name_copy);
+  struct thread* cur_thread = thread_current();
+  struct list_elem* cur_elem = list_begin(&(cur_thread->child));
+  
+
+  // printf("isLoad????? %d\n", cur_thread->isLoad);
+
+    //child를 돌면서 load 실패한 애를 찾는다
+  while(cur_elem != list_end(&(cur_thread->child))){
+    struct thread* tmp = list_entry(cur_elem, struct thread, child_elem);
+    if(!(tmp->isLoad)){
+      return process_wait(tid);
+    }
+    cur_elem = list_next(cur_elem);
+  }
+
   return tid;
 }
 
@@ -101,14 +120,25 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (file_name, &if_.eip, &if_.esp); //메모리 로드
+
+  // printf("==시작 %x %d\n", thread_current(), success);
   // printf("load done\n");
+  sema_up(&thread_current()->p_thread->sema_load); //로드 끝나면 부모한테 걸었던 거 풀어주기
+
+  if(success) thread_current()->isLoad = true;
 
   // printf("from start %p(%d)\n", thread_current()->ing_file, thread_current()->ing_file->inode->deny_write_cnt);
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+
+
+  if (!success) {
+    thread_current()->isLoad = false;
+    // printf("== 이친구가 load를 실패했어!: %x\n", thread_current()->tid);
+    // thread_exit ();
+    exit(-1);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -138,12 +168,12 @@ process_wait (tid_t child_tid UNUSED)
   struct thread* cur_thread = thread_current();
   struct list_elem* cur_elem = list_begin(&(cur_thread->child));
   
-  // printf("tid 찾을 준비\n");
+// printf("== 얘가 부모란다 ㅣ %x\n", cur_thread->tid);
 
-  if(cur_elem == NULL) return -1;
-
-  // printf("일단 있긴 있어!\n");
-
+  if(cur_elem == NULL){
+    // printf("== child가 없는 케이스\n");
+    return -1;
+  }
 
   while(cur_elem != list_end(&(cur_thread->child))){
     struct thread* tmp = list_entry(cur_elem, struct thread, child_elem);
@@ -153,11 +183,13 @@ process_wait (tid_t child_tid UNUSED)
       list_remove(&(tmp->child_elem)); //child를 없앤다
       
       sema_up(&(tmp->sema_mem)); //메모리 lock 풀음
+      // printf("== 자식으 ㅣ %x ㅣ%d\n", tmp->tid, tmp->exit_status);
       return tmp->exit_status;
     }
     cur_elem = list_next(cur_elem);
   }
 
+  // printf("== tid 못찾음!!!! ㅣ %x\n", cur_thread->tid);
   return -1;
 }
 
@@ -191,7 +223,7 @@ process_exit (void)
 
 
   for(int i=3;i<FD_TABLE_SIZE;i++){
-    if(!cur->fdt[i]) continue;
+    if(!(cur->fdt[i])) continue;
     if(cur->fdt[i] == cur->ing_file){
       cur->fdt[i] = NULL;
       continue;
