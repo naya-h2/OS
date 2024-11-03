@@ -134,7 +134,6 @@ start_process (void *file_name_)
 
 
   if (!success) {
-    thread_current()->isLoad = false;
     // printf("== 이친구가 load를 실패했어!: %x\n", thread_current()->tid);
     // thread_exit ();
     exit(-1);

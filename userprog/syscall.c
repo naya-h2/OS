@@ -248,9 +248,6 @@ int open (const char *file){
   int fd = -1;
   for(int i=3;i<FD_TABLE_SIZE;i++){
     if(cur->fdt[i]) continue;
-    //넣기 전에 검사
-    // if(cur->ing_file)
-    
     cur->fdt[i] = temp;
     fd = i;
     break;
