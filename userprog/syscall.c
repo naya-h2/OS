@@ -181,7 +181,7 @@ int write (int fd, const void *buffer, unsigned length){
   else{
     struct thread *cur_thread = thread_current();
     struct file *cur_file = cur_thread->fdt[fd];
-    if(!cur_file) length = -1;
+    if(!cur_file) real_size = -1;
     else{
       if(cur_file->deny_write) file_deny_write(cur_file); //현재 파일을 읽기 모드로 열기
       real_size = file_write(cur_file, buffer, length);
@@ -260,12 +260,9 @@ int open (const char *file){
 void close (int fd){
   struct thread *cur_thread = thread_current();
   if(fd < 3 || fd > FD_TABLE_SIZE - 1) return;
-  for(int i=3;i<FD_TABLE_SIZE;i++){
-    if(!cur_thread->fdt[i]) continue;
-    // printf("from syscall\n");
-    file_close(cur_thread->fdt[i]);
-    cur_thread->fdt[i] = NULL; //fdt 초기화
-  }
+  if(!cur_thread->fdt[fd]) exit(-1);
+  file_close(cur_thread->fdt[fd]);
+  cur_thread->fdt[fd] = NULL;
 }
 
 int filesize (int fd){
