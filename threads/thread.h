@@ -117,9 +117,8 @@ struct thread
    struct semaphore sema_load;
    struct thread* p_thread; //얘를 만든 parent 
    bool isLoad;
-
+   struct semaphore sema_child;
 #endif
-    struct semaphore sema_child;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

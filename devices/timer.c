@@ -109,13 +109,13 @@ timer_sleep (int64_t ticks)
 
   enum intr_level old_level = intr_disable(); //인터럽트 비활성화
   list_push_back(&blocked_list, &cur_thread->elem); //리스트에 넣고
-  
+
   thread_block();
   intr_enable();
 
   // printf("sleep2: %p\n", &cur_thread->elem);
 
- 
+
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -181,6 +181,12 @@ timer_ndelay (int64_t ns)
   real_time_delay (ns, 1000 * 1000 * 1000);
 }
 
+static inline bool
+is_interior (struct list_elem *elem)
+{
+  return elem != NULL && elem->prev != NULL && elem->next != NULL;
+}
+
 /* Prints timer statistics. */
 void
 timer_print_stats (void) 
@@ -200,18 +206,17 @@ timer_interrupt (struct intr_frame *args UNUSED)
   
   // child를 돌면서 깨울 스레드 찾아서 깨우기
   while(cur_elem != list_end(&blocked_list)){
+
     // printf("wake: %p\n", cur_elem);
     tmp = list_entry(cur_elem, struct thread, elem);
     // printf("ok??\n");
-    if(tmp->wakeup_tick >= current_tick){
-      cur_elem = cur_elem->next;
+    if(tmp->wakeup_tick > current_tick){
+      cur_elem = list_next (cur_elem);
     }
     else{
-      // printf("list_remove(): %p\n", cur_elem);
-      // printf("ok??22\n");
       cur_elem = list_remove(cur_elem); //지우고
+      thread_unblock(tmp);
       // printf("ok??33\n");
-      thread_unblock(tmp); //unblock
     }
     
   }

@@ -291,8 +291,10 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
-  
+
+#ifdef USERPROG
   sema_up(&(thread_current()->sema_child)); //child lock 풀고
+#endif
 
   thread_current ()->status = THREAD_DYING;
   schedule ();
