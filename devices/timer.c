@@ -8,6 +8,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
   
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -30,6 +31,8 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+static struct list blocked_list; //block된 스레드들을 저장할 list
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -37,6 +40,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init(&blocked_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -92,8 +96,26 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  // while (timer_elapsed (start) < ticks) 
+  //   thread_yield ();
+
+  
+
+  struct thread *cur_thread = thread_current();
+  int64_t wake_time = start + ticks;
+  cur_thread->wakeup_tick = wake_time; //현재 스레드 일어날 tick 저장
+
+  // printf("sleep1: %p\n", &cur_thread->elem);
+
+  enum intr_level old_level = intr_disable(); //인터럽트 비활성화
+  list_push_back(&blocked_list, &cur_thread->elem); //리스트에 넣고
+  
+  thread_block();
+  intr_enable();
+
+  // printf("sleep2: %p\n", &cur_thread->elem);
+
+ 
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -170,7 +192,31 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+  
+  int64_t current_tick = timer_ticks();
+  // printf("일어날게~\n");
+  struct thread* tmp;
+  struct list_elem* cur_elem = list_begin(&blocked_list);
+  
+  // child를 돌면서 깨울 스레드 찾아서 깨우기
+  while(cur_elem != list_end(&blocked_list)){
+    // printf("wake: %p\n", cur_elem);
+    tmp = list_entry(cur_elem, struct thread, elem);
+    // printf("ok??\n");
+    if(tmp->wakeup_tick >= current_tick){
+      cur_elem = cur_elem->next;
+    }
+    else{
+      // printf("list_remove(): %p\n", cur_elem);
+      // printf("ok??22\n");
+      cur_elem = list_remove(cur_elem); //지우고
+      // printf("ok??33\n");
+      thread_unblock(tmp); //unblock
+    }
+    
+  }
   ticks++;
+
   thread_tick ();
 }
 

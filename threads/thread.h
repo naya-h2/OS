@@ -7,6 +7,10 @@
 
 #include "threads/synch.h"
 
+#ifdef USERPROG
+extern bool thread_prior_aging;
+#endif
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -96,6 +100,8 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    int64_t wakeup_tick;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -103,7 +109,6 @@ struct thread
 
     struct list child; //자식 리스트
     struct list_elem child_elem; //자식 리스트 elem
-    struct semaphore sema_child;
     struct semaphore sema_mem;
 
    //  proj#2
@@ -114,9 +119,11 @@ struct thread
    bool isLoad;
 
 #endif
+    struct semaphore sema_child;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+   
   };
 
 /* If false (default), use round-robin scheduler.
@@ -133,6 +140,7 @@ void thread_print_stats (void);
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
+bool cmp_priority(const struct list_elem *prev, const struct list_elem *next, void *aux UNUSED);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
