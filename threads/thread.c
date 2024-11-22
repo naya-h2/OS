@@ -201,6 +201,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  if(priority > thread_get_priority()){ //새로 만드는 애가 더 높으면
+    thread_yield(); //지금 thread를 yield
+  }
+
   return tid;
 }
 
@@ -220,6 +224,13 @@ thread_block (void)
   schedule ();
 }
 
+bool cmp_priority(const struct list_elem *prev, const struct list_elem *next, void *aux UNUSED){
+  struct thread *t1, *t2;
+  t1=list_entry(prev, struct thread, elem);
+  t2=list_entry(next, struct thread, elem);
+  return (t1->priority) > (t2->priority);
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -237,7 +248,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  // list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &(t->elem), cmp_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -313,7 +325,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    // list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, cmp_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -340,7 +353,9 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  int old = thread_current()->priority;
   thread_current ()->priority = new_priority;
+  if(old > new_priority) thread_yield(); //우선순위 낮아졌으면 양보
 }
 
 /* Returns the current thread's priority. */
